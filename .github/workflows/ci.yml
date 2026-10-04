@@ -1,0 +1,105 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        workspace: [bot, mini-app, admin-panel, shared]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ${{ matrix.workspace }}
+      
+      - name: Run linting
+        run: npm run lint
+        working-directory: ${{ matrix.workspace }}
+      
+      - name: Type check
+        run: npx tsc --noEmit
+        working-directory: ${{ matrix.workspace }}
+      
+      - name: Build
+        run: npm run build
+        working-directory: ${{ matrix.workspace }}
+
+  deploy-mini-app:
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to Vercel (Mini App)
+        uses: amondnet/vercel-action@v25
+        if: ${{ secrets.VERCEL_TOKEN != '' }}
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_MINI_APP_PROJECT_ID }}
+          vercel-args: '--prod'
+        working-directory: mini-app
+
+  deploy-admin:
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to Vercel (Admin Panel)
+        uses: amondnet/vercel-action@v25
+        if: ${{ secrets.VERCEL_TOKEN != '' }}
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_ADMIN_PROJECT_ID }}
+          vercel-args: '--prod'
+        working-directory: admin-panel
+
+  deploy-bot:
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to Railway
+        uses: railwayapp/railway-deploy@v1
+        if: ${{ secrets.RAILWAY_TOKEN != '' }}
+        with:
+          token: ${{ secrets.RAILWAY_TOKEN }}
+          service: telegram-bot
+        working-directory: bot
+
+  notify:
+    needs: [deploy-mini-app, deploy-admin, deploy-bot]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify on failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#deployments'
+          text: 'Deployment failed! Check GitHub Actions for details.'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

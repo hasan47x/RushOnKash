@@ -1,0 +1,28 @@
+# Railway Configuration for Telegram Bot
+# Place this in the root of the bot directory
+
+[build]
+builder = "nixpacks"
+buildCommand = "npm run build"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+
+[[services]]
+name = "telegram-bot"
+port = 3000
+healthCheckPath = "/health"
+
+# Environment variables (set in Railway dashboard)
+# BOT_TOKEN=your_bot_token
+# WEBHOOK_URL=https://your-app.railway.app
+# WEBHOOK_SECRET=your_webhook_secret
+# SUPABASE_URL=your_supabase_url
+# SUPABASE_ANON_KEY=your_supabase_anon_key
+# SUPABASE_SERVICE_KEY=your_supabase_service_key
+# MINI_APP_URL=https://your-mini-app.vercel.app
+# ADMIN_PANEL_URL=https://admin.yourdomain.com
+# NODE_ENV=production
+# PORT=3000
