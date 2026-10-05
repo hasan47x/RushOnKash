@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Save, RotateCcw, Coin, Gamepad2, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Save, RotateCcw, Coins, Gamepad2, CheckCircle, XCircle, Loader2, Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { formatCurrency, cn } from '../../shared/utils/cn';
+import { formatCurrency, cn } from '../utils/cn';
+import { parseConfig } from '../utils/config';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
@@ -46,13 +47,11 @@ export function GamesConfig() {
       if (error) throw error;
 
       const configMap = new Map(data?.map(d => [d.key, d.value]) || []);
-      
-      if (configMap.has('coinflip_config')) {
-        setCoinflip(JSON.parse(configMap.get('coinflip_config')!));
-      }
-      if (configMap.has('spin_config')) {
-        setSpin(JSON.parse(configMap.get('spin_config')!));
-      }
+
+      const cf = configMap.get('coinflip_config');
+      if (cf) setCoinflip(prev => ({ ...prev, ...parseConfig(cf, {}) }));
+      const sp = configMap.get('spin_config');
+      if (sp) setSpin(prev => ({ ...prev, ...parseConfig(sp, {}) }));
     } catch (err) {
       console.error('Config fetch error:', err);
     } finally {
@@ -65,8 +64,8 @@ export function GamesConfig() {
     setMessage(null);
     try {
       const updates = [
-        { key: 'coinflip_config', value: JSON.stringify(coinflip) },
-        { key: 'spin_config', value: JSON.stringify(spin) },
+        { key: 'coinflip_config', value: coinflip },
+        { key: 'spin_config', value: spin },
       ];
 
       for (const update of updates) {
@@ -118,7 +117,7 @@ export function GamesConfig() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
-                <Coin className="w-5 h-5 text-amber-500" />
+                <Coins className="w-5 h-5 text-amber-500" />
               </div>
               <h3 className="text-lg font-semibold">CoinFlip Configuration</h3>
             </div>

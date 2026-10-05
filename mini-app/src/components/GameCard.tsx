@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ChevronRight, Play, CheckCircle, Clock } from 'lucide-react';
+import { ChevronRight, Play, CheckCircle, Clock, Zap } from 'lucide-react';
 import { cn, formatCurrency } from '../utils/cn';
 
 interface GameCardProps {

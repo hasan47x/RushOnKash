@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Save, Bot, RotateCcw, Loader2, Users, Shield, AlertTriangle } from 'lucide-react';
+import { Save, Bot, RotateCcw, Loader2, Users, Shield, AlertTriangle, Trash2, MailPlus } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { cn } from '../../shared/utils/cn';
+import { cn } from '../utils/cn';
+import { parseConfig } from '../utils/config';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
@@ -10,6 +11,7 @@ const supabase = createClient(supabaseUrl, import.meta.env.VITE_SUPABASE_ANON_KE
 interface BotConfig {
   botUsername: string;
   adminIds: string[];
+  adminEmails: string[];
   withdrawGroupId: string;
   maintenanceMode: boolean;
 }
@@ -18,6 +20,7 @@ export function BotConfig() {
   const [config, setConfig] = useState<BotConfig>({
     botUsername: '',
     adminIds: [],
+    adminEmails: [],
     withdrawGroupId: '',
     maintenanceMode: false,
   });
@@ -25,6 +28,7 @@ export function BotConfig() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [newAdminId, setNewAdminId] = useState('');
+  const [newAdminEmail, setNewAdminEmail] = useState('');
 
   useEffect(() => {
     fetchConfig();
@@ -39,7 +43,7 @@ export function BotConfig() {
         .single();
       if (error && error.code !== 'PGRST116') throw error;
       if (data?.value) {
-        setConfig(JSON.parse(data.value));
+        setConfig(prev => ({ ...prev, ...parseConfig<Partial<BotConfig>>(data.value, {}) }));
       }
     } catch (err) {
       console.error('Config fetch error:', err);
@@ -54,7 +58,7 @@ export function BotConfig() {
     try {
       const { error } = await supabase
         .from('app_config')
-        .upsert({ key: 'bot_config', value: JSON.stringify(config), updated_at: new Date().toISOString() });
+        .upsert({ key: 'bot_config', value: config, updated_at: new Date().toISOString() });
       if (error) throw error;
       setMessage({ type: 'success', text: 'Bot configuration saved successfully!' });
     } catch (err) {
@@ -73,6 +77,18 @@ export function BotConfig() {
 
   const removeAdmin = (adminId: string) => {
     setConfig(prev => ({ ...prev, adminIds: prev.adminIds.filter(id => id !== adminId) }));
+  };
+
+  const addAdminEmail = () => {
+    const email = newAdminEmail.trim().toLowerCase();
+    if (email && email.includes('@') && !config.adminEmails.includes(email)) {
+      setConfig(prev => ({ ...prev, adminEmails: [...(prev.adminEmails ?? []), email] }));
+      setNewAdminEmail('');
+    }
+  };
+
+  const removeAdminEmail = (email: string) => {
+    setConfig(prev => ({ ...prev, adminEmails: (prev.adminEmails ?? []).filter(e => e !== email) }));
   };
 
   return (
@@ -165,8 +181,55 @@ export function BotConfig() {
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
-            ))}
+            )))}
           </div>
+      </div>
+
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Shield className="w-5 h-5 text-emerald-500" />
+            Admin Panel Access (Email)
+          </h3>
+          <div className="flex gap-2">
+            <input
+              type="email"
+              value={newAdminEmail}
+              onChange={e => setNewAdminEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addAdminEmail()}
+              placeholder="admin@example.com"
+              className="input flex-1"
+            />
+            <button onClick={addAdminEmail} disabled={!newAdminEmail.trim() || (config.adminEmails ?? []).includes(newAdminEmail.trim().toLowerCase())} className="btn-secondary">
+              <MailPlus className="w-4 h-4" /> Add
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-dark-500 mb-3">
+          Emails listed here can log in to this admin panel and see all data. The email must match a Supabase Auth user
+          (create it under Authentication → Users).
+        </p>
+        <div className="space-y-2">
+          {(config.adminEmails ?? []).length === 0 ? (
+            <p className="text-dark-400 text-center py-4">No admin emails configured. You will not be able to log in until you add one.</p>
+          ) : (
+            (config.adminEmails ?? []).map((email, index) => (
+              <div key={email} className="flex items-center justify-between p-3 bg-dark-800/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold text-sm">
+                    {index + 1}
+                  </div>
+                  <div>
+                    <p className="font-medium">{email}</p>
+                    <p className="text-xs text-dark-500">Panel admin</p>
+                  </div>
+                </div>
+                <button onClick={() => removeAdminEmail(email)} className="text-red-500 hover:text-red-400">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -194,5 +257,3 @@ export function BotConfig() {
     </div>
   );
 }
-
-import { Trash2 } from 'lucide-react';

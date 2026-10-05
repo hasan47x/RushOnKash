@@ -1,6 +1,6 @@
-import { ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Home, Gamepad2, ListChecks, Wallet, User, Trophy, Share2, Menu, X } from 'lucide-react';
+import { useEffect, useState, ReactNode } from 'react';
+import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Home, Gamepad2, ListChecks, Wallet, User, Trophy, Share2 } from 'lucide-react';
 import { useTelegram } from '../context/TelegramContext';
 import { useAuth } from '../context/AuthContext';
 import { useConfig } from '../context/ConfigContext';
@@ -14,7 +14,7 @@ const navItems = [
   { path: '/profile', icon: User, label: 'Profile' },
 ];
 
-export function Layout({ children }: { children: ReactNode }) {
+export function Layout({ children }: { children?: ReactNode }) {
   const location = useLocation();
   const { webApp, setHeaderColor, setBackgroundColor } = useTelegram();
   const { user } = useAuth();
@@ -43,7 +43,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
             <span className="font-bold text-xl gradient-text">RushOnCash</span>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <Link to="/referral" className="btn-ghost p-2">
               <Share2 className="w-5 h-5" />
@@ -56,7 +56,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </header>
 
       <main className="flex-1 max-w-md mx-auto w-full px-4 py-4 pb-24">
-        {children}
+        {children ?? <Outlet />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-dark-950/95 backdrop-blur-xl border-t border-dark-800 z-50">
@@ -85,6 +85,3 @@ export function Layout({ children }: { children: ReactNode }) {
     </div>
   );
 }
-
-import { useState } from 'react';
-import { cn } from '../utils/cn';

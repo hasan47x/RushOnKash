@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Wallet, Users, Trophy, Settings, ArrowLeft, Edit, Copy, Share2, Clock, Calendar, Gamepad2, RotateCcw } from 'lucide-react';
+import { Wallet, Users, Trophy, Settings, ArrowLeft, Edit, Copy, Share2, Clock, Calendar, Gamepad2, RotateCcw, CheckCircle, ChevronRight, Shield, Coins } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useConfig } from '../context/ConfigContext';
 import { useTelegram } from '../context/TelegramContext';
@@ -93,7 +93,7 @@ export function Profile() {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-dark-800/50 rounded-xl p-4 text-center">
-            <Coin className="w-6 h-6 mx-auto text-amber-500 mb-2" />
+            <Coins className="w-6 h-6 mx-auto text-amber-500 mb-2" />
             <p className="text-sm text-dark-400">CoinFlip</p>
             <p className="font-bold text-lg">{user.coinflip_won || 0} / {user.coinflip_played || 0}</p>
             <p className="text-xs text-dark-500">Wins / Games</p>
@@ -158,4 +158,3 @@ export function Profile() {
   );
 }
 
-import { Coin } from 'lucide-react';

@@ -24,7 +24,7 @@ export function ReferralCard({ code, count, bonus }: ReferralCardProps) {
     try {
       await navigator.clipboard.writeText(referralLink);
       setCopied(true);
-      webApp?.hapticFeedback?.notificationOccurred?.('success');
+      webApp?.HapticFeedback.notificationOccurred('success');
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Copy failed:', err);

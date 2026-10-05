@@ -19,6 +19,9 @@ export interface User {
   spin_won: number;
   is_banned: boolean;
   is_bot_verified: boolean;
+  telegramBonus?: number | null;
+  youtubeBonus?: number | null;
+  facebookBonus?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -154,6 +157,8 @@ export interface TaskConfig {
 export interface BotConfig {
   botUsername: string;
   adminIds: string[];
+  adminEmails?: string[];
   withdrawGroupId?: string;
   maintenanceMode: boolean;
+  referralBonus?: number;
 }

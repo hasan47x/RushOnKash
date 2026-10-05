@@ -1,5 +1,5 @@
 import { Telegraf, Markup } from 'telegraf';
-import { BotContext } from '../index';
+import { BotContext, DbUser } from '../index';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { supabase } from '../index';
@@ -7,39 +7,49 @@ import { supabase } from '../index';
 export function setupCommands(bot: Telegraf<BotContext>) {
   bot.start(async (ctx) => {
     const payload = ctx.startPayload;
-    let referrerId: string | null = null;
-    
+    let referrerUser: DbUser | null = null;
+
     if (payload) {
       if (payload.startsWith('ref_')) {
-        referrerId = payload.replace('ref_', '');
+        const code = payload.slice(4).toUpperCase();
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .eq('referral_code', code)
+          .maybeSingle();
+        referrerUser = data;
       } else if (/^\d+$/.test(payload)) {
-        referrerId = payload;
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .eq('telegram_id', payload)
+          .maybeSingle();
+        referrerUser = data;
       }
     }
 
     const userId = ctx.from!.id.toString();
-    
+
     let { data: user } = await supabase
       .from('users')
       .select('*')
       .eq('telegram_id', userId)
-      .single();
+      .maybeSingle();
 
     if (!user) {
       const referralCode = generateReferralCode();
-      
+
       const { data: newUser, error } = await supabase
         .from('users')
         .insert({
           telegram_id: userId,
-          username: ctx.from?.username,
-          first_name: ctx.from?.first_name,
-          last_name: ctx.from?.last_name,
-          photo_url: ctx.from?.photo_url,
+          username: ctx.from?.username ?? null,
+          first_name: ctx.from?.first_name ?? ctx.from?.username ?? 'User',
+          last_name: ctx.from?.last_name ?? null,
           balance: 0,
           total_earned: 0,
           referral_code: referralCode,
-          referred_by: referrerId,
+          referred_by: referrerUser?.id ?? null,
           referral_count: 0,
           daily_ads_watched: 0,
           daily_ads_limit: 10,
@@ -61,16 +71,30 @@ export function setupCommands(bot: Telegraf<BotContext>) {
 
       user = newUser;
 
-      if (referrerId && referrerId !== userId) {
-        await supabase
+      if (referrerUser && referrerUser.id !== user.id) {
+        const { error: refErr } = await supabase
           .from('referrals')
-          .insert({ referrer_id: referrerId, referred_id: user.id });
+          .insert({ referrer_id: referrerUser.id, referred_id: user.id });
+
+        if (!refErr) {
+          const { data: claim } = await supabase.rpc('claim_referral_bonus', {
+            referrer_id: referrerUser.id,
+            referred_id: user.id,
+            bonus: config.referralBonus,
+          });
+          if (claim?.success) {
+            await supabase
+              .from('users')
+              .update({ referral_count: referrerUser.referral_count + 1 })
+              .eq('id', referrerUser.id);
+          }
+        }
       }
 
       await ctx.reply(
         `🎉 Welcome to RushOnCash!\n\n` +
         `Your referral code: <code>${referralCode}</code>\n` +
-        `Share it with friends and earn ${config.referralBonus || 1} ${config.currencySymbol || '৳'} per referral!`,
+        `Share it with friends and earn ${config.referralBonus || 1} ${config.currencySymbol} per referral!`,
         { parse_mode: 'HTML', ...Markup.inlineKeyboard([
           [Markup.button.webApp('🎮 Open Mini App', config.miniAppUrl!)],
         ])}
@@ -78,7 +102,7 @@ export function setupCommands(bot: Telegraf<BotContext>) {
     } else {
       await ctx.reply(
         `👋 Welcome back, ${user.first_name}!\n\n` +
-        `💰 Balance: ${user.balance.toFixed(2)} ${config.currencySymbol || '৳'}\n` +
+        `💰 Balance: ${user.balance.toFixed(2)} ${config.currencySymbol}\n` +
         `👥 Referrals: ${user.referral_count}\n` +
         `🔗 Your code: <code>${user.referral_code}</code>`,
         { parse_mode: 'HTML', ...Markup.inlineKeyboard([
@@ -151,48 +175,54 @@ export function setupCommands(bot: Telegraf<BotContext>) {
     );
   });
 
-  if (config.adminIds.includes(ctx.from!.id.toString())) {
-    bot.command('admin', async (ctx) => {
-      await ctx.scene.enter('admin');
-    });
+  bot.command('admin', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    await ctx.scene.enter('admin');
+  });
 
-    bot.command('stats', async (ctx) => {
-      const [{ count: users }, { count: withdrawals }, { data: totalBalance }] = await Promise.all([
-        supabase.from('users').select('*', { count: 'exact', head: true }),
-        supabase.from('withdrawals').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('users').select('balance'),
-      ]);
+  bot.command('stats', async (ctx) => {
+    if (!isAdmin(ctx)) return;
 
-      const totalBal = totalBalance?.reduce((sum, u) => sum + (u.balance || 0), 0) || 0;
+    const [{ count: users }, { count: withdrawals }, { data: totalBalance }] = await Promise.all([
+      supabase.from('users').select('*', { count: 'exact', head: true }),
+      supabase.from('withdrawals').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('users').select('balance'),
+    ]);
 
-      await ctx.reply(
-        `📊 <b>Bot Statistics</b>\n\n` +
-        `👥 Total Users: ${users || 0}\n` +
-        `💰 Total Balance: ${totalBal.toFixed(2)} ${config.currencySymbol || '৳'}\n` +
-        `⏳ Pending Withdrawals: ${withdrawals || 0}`,
-        { parse_mode: 'HTML' }
-      );
-    });
+    const totalBal = totalBalance?.reduce((sum, u) => sum + (u.balance || 0), 0) || 0;
 
-    bot.command('broadcast', async (ctx) => {
-      const message = ctx.message.text.replace('/broadcast', '').trim();
-      if (!message) return ctx.reply('Usage: /broadcast <message>');
+    await ctx.reply(
+      `📊 <b>Bot Statistics</b>\n\n` +
+      `👥 Total Users: ${users || 0}\n` +
+      `💰 Total Balance: ${totalBal.toFixed(2)} ${config.currencySymbol}\n` +
+      `⏳ Pending Withdrawals: ${withdrawals || 0}`,
+      { parse_mode: 'HTML' }
+    );
+  });
 
-      const { data: users } = await supabase.from('users').select('telegram_id').eq('is_banned', false);
-      let sent = 0, failed = 0;
+  bot.command('broadcast', async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    const message = ctx.message.text.replace('/broadcast', '').trim();
+    if (!message) return ctx.reply('Usage: /broadcast <message>');
 
-      for (const user of users || []) {
-        try {
-          await bot.telegram.sendMessage(user.telegram_id, message, { parse_mode: 'HTML' });
-          sent++;
-        } catch {
-          failed++;
-        }
+    const { data: users } = await supabase.from('users').select('telegram_id').eq('is_banned', false);
+    let sent = 0, failed = 0;
+
+    for (const user of users || []) {
+      try {
+        await bot.telegram.sendMessage(user.telegram_id, message, { parse_mode: 'HTML' });
+        sent++;
+      } catch {
+        failed++;
       }
+    }
 
-      await ctx.reply(`Broadcast sent: ${sent} success, ${failed} failed`);
-    });
-  }
+    await ctx.reply(`Broadcast sent: ${sent} success, ${failed} failed`);
+  });
+}
+
+function isAdmin(ctx: BotContext): boolean {
+  return Boolean(ctx.from) && config.adminIds.includes(String(ctx.from!.id));
 }
 
 function generateReferralCode(): string {

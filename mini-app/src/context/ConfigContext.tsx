@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import type { CoinFlipConfig, SpinConfig, WithdrawConfig, AdConfig, TaskConfig, BotConfig, AppConfig } from '@shared/types';
 
 interface ConfigState {
@@ -12,15 +12,33 @@ interface ConfigState {
   loading: boolean;
 }
 
+interface ConfigGroup {
+  coinflip: CoinFlipConfig;
+  spin: SpinConfig;
+  withdraw: WithdrawConfig;
+  ads: AdConfig;
+  tasks: TaskConfig;
+  bot: BotConfig;
+}
+
 interface ConfigContextType extends ConfigState {
+  config: ConfigGroup;
   refreshConfig: () => Promise<void>;
 }
 
 const ConfigContext = createContext<ConfigContextType | null>(null);
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+function asObject<T>(value: unknown, fallback: T): T {
+  if (value && typeof value === 'object') return value as T;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
 
 const defaultConfig: ConfigState = {
   coinflip: { winReward: 0.05, lossReward: 0, dailyLimit: 20 },
@@ -28,7 +46,7 @@ const defaultConfig: ConfigState = {
   withdraw: { minAmount: 100, maxAmount: 10000, requiredReferrals: 5, cooldownHours: 24, methods: [] },
   ads: { enabled: true, monetagEnabled: true, gigapubEnabled: true, adsgramEnabled: true, adsgramBlockId: '', monetagZoneId: '', gigapubScripts: [], rewardPerAd: 0.05, dailyAdLimit: 10, enforceWatchSeconds: true, watchSeconds: 10 },
   tasks: { channelJoinReward: 1, youtubeSubReward: 2, facebookFollowReward: 1, dailyLoginReward: 0.5, channelUsername: '', youtubeChannelUrl: '', facebookPageUrl: '' },
-  bot: { botUsername: '', adminIds: [], withdrawGroupId: '', maintenanceMode: false },
+  bot: { botUsername: '', adminIds: [], adminEmails: [], withdrawGroupId: '', maintenanceMode: false, referralBonus: 1 },
   loading: true,
 };
 
@@ -47,12 +65,12 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
 
       setConfig(prev => ({
         ...prev,
-        coinflip: configMap.has('coinflip_config') ? JSON.parse(configMap.get('coinflip_config')!) : prev.coinflip,
-        spin: configMap.has('spin_config') ? JSON.parse(configMap.get('spin_config')!) : prev.spin,
-        withdraw: configMap.has('withdraw_config') ? JSON.parse(configMap.get('withdraw_config')!) : prev.withdraw,
-        ads: configMap.has('ad_config') ? JSON.parse(configMap.get('ad_config')!) : prev.ads,
-        tasks: configMap.has('task_config') ? JSON.parse(configMap.get('task_config')!) : prev.tasks,
-        bot: configMap.has('bot_config') ? JSON.parse(configMap.get('bot_config')!) : prev.bot,
+        coinflip: asObject(configMap.get('coinflip_config'), prev.coinflip),
+        spin: asObject(configMap.get('spin_config'), prev.spin),
+        withdraw: asObject(configMap.get('withdraw_config'), prev.withdraw),
+        ads: asObject(configMap.get('ad_config'), prev.ads),
+        tasks: asObject(configMap.get('task_config'), prev.tasks),
+        bot: asObject(configMap.get('bot_config'), prev.bot),
         loading: false,
       }));
     } catch (err) {
@@ -70,7 +88,18 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <ConfigContext.Provider value={{ ...config, refreshConfig }}>
+    <ConfigContext.Provider value={{
+      ...config,
+      config: {
+        coinflip: config.coinflip,
+        spin: config.spin,
+        withdraw: config.withdraw,
+        ads: config.ads,
+        tasks: config.tasks,
+        bot: config.bot,
+      },
+      refreshConfig,
+    }}>
       {children}
     </ConfigContext.Provider>
   );

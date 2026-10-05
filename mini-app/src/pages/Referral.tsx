@@ -18,13 +18,13 @@ export function Referral() {
   const botUsername = config.bot.botUsername || 'yourbot';
   const referralLink = `https://t.me/${botUsername}?start=ref_${user.referral_code}`;
   const shareText = `Join RushOnCash and earn money! 💰\n\nUse my referral code: ${user.referral_code}\n\n${referralLink}`;
-  const referralBonus = config.tasks?.channelJoinReward || 1;
+  const referralBonus = config.bot.referralBonus || 1;
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(referralLink);
       setCopied(true);
-      webApp?.hapticFeedback?.notificationOccurred?.('success');
+      webApp?.HapticFeedback.notificationOccurred('success');
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Copy failed:', err);

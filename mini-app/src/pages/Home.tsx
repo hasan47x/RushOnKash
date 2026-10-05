@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Wallet, Gamepad2, ListChecks, Gift, Star, TrendingUp, ExternalLink, ArrowRight } from 'lucide-react';
+import { Wallet, Gamepad2, ListChecks, Gift, Star, TrendingUp, ExternalLink, ArrowRight, Trophy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useConfig } from '../context/ConfigContext';
 import { useTelegram } from '../context/TelegramContext';

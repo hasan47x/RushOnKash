@@ -210,7 +210,7 @@ export function Withdraw() {
             <div>
               <label className="block text-sm font-medium mb-2">Amount</label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-400">{config.currencySymbol || '৳'}</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-400">{'৳'}</span>
                 <input
                   type="number"
                   value={amount}

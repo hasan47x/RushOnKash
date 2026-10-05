@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Users, CreditCard, TrendingUp, Activity, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
+import { Users, CreditCard, TrendingUp, Activity, ArrowUpRight, ArrowDownRight, Minus, Gamepad2, Signal } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { formatCurrency, formatNumber, cn } from '../../shared/utils/cn';
+import { formatCurrency, formatNumber, cn } from '../utils/cn';
 import { StatCard } from '../components/StatCard';
+import type { StatCardProps } from '../components/StatCard';
 import { ChartCard } from '../components/ChartCard';
 import { RecentActivity } from '../components/RecentActivity';
 
@@ -74,7 +75,7 @@ export function Dashboard() {
     }
   };
 
-  const statCards = [
+  const statCards: StatCardProps[] = [
     {
       label: 'Total Users',
       value: stats.totalUsers,

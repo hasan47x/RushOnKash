@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Download, TrendingUp, Users, CreditCard, Gamepad2, RotateCcw, Clock } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { formatCurrency, formatNumber, cn } from '../../shared/utils/cn';
+import { formatCurrency, formatNumber, cn } from '../utils/cn';
 import { ChartCard } from '../components/ChartCard';
 import { StatCard } from '../components/StatCard';
 
@@ -100,7 +100,7 @@ export function Analytics() {
         spin: Math.floor(Math.random() * 80) + 10,
       }));
 
-      const topReferrers = [];
+      const topReferrers: Array<{ user: any; count: number }> = [];
 
       setCharts({ usersOverTime, revenueOverTime, gamesOverTime, topReferrers });
     } catch (err) {

@@ -1,7 +1,7 @@
-import { cn } from '../../shared/utils/cn';
+import { cn } from '../utils/cn';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
-interface StatCardProps {
+export interface StatCardProps {
   label: string;
   value: number;
   icon: React.ComponentType<{ className?: string }>;
@@ -30,7 +30,7 @@ export function StatCard({ label, value, icon: Icon, formatter, change, trend = 
           <p className="text-2xl font-bold">{value.toLocaleString()}</p>
         </div>
         <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center', colors[color as keyof typeof colors] || colors.primary)}>
-          {({ className }) => <Icon className={cn('w-5 h-5', className)} />}
+          <Icon className="w-5 h-5" />
         </div>
       </div>
       {change !== undefined && (

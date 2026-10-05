@@ -166,7 +166,7 @@ export function Tasks() {
                 <div className="flex-1">
                   <p className="font-semibold">{task.name}</p>
                   <p className="text-sm text-dark-400">
-                    Earn {formatCurrency(reward)} for completing this task
+                    Earn {formatCurrency(Number(reward))} for completing this task
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -177,7 +177,7 @@ export function Tasks() {
                     </span>
                   ) : status.completed ? (
                     <button onClick={() => handleClaim(task)} className="btn-primary text-sm px-3 py-1">
-                      Claim {formatCurrency(reward)}
+                      Claim {formatCurrency(Number(reward))}
                     </button>
                   ) : (
                     <button onClick={() => handleTaskAction(task)} className="btn-secondary text-sm px-3 py-1">

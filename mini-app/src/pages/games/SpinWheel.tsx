@@ -273,4 +273,3 @@ export function SpinWheel() {
   );
 }
 
-import { ArrowLeft } from 'lucide-react';

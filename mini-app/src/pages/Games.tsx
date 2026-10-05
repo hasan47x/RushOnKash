@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Coin, RotateCcw, Target, Zap, Shield, Star, ChevronRight } from 'lucide-react';
+import { Coins, RotateCcw, Target, Zap, Shield, Star, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useConfig } from '../context/ConfigContext';
 import { cn, formatCurrency } from '../utils/cn';
@@ -13,7 +13,7 @@ export function Games() {
     {
       id: 'coinflip',
       name: 'CoinFlip',
-      icon: <Coin className="w-8 h-8" />,
+      icon: <Coins className="w-8 h-8" />,
       description: 'Classic 50/50 coin toss',
       reward: formatCurrency(config.coinflip.winReward),
       color: 'from-amber-500 to-orange-500',
@@ -44,7 +44,7 @@ export function Games() {
           <p className="text-dark-400">Play and win rewards</p>
         </div>
         <div className="flex items-center gap-2 bg-dark-800/50 px-3 py-2 rounded-xl">
-          <Coin className="w-5 h-5 text-yellow-500" />
+          <Coins className="w-5 h-5 text-yellow-500" />
           <span className="font-semibold">{formatCurrency(user?.balance || 0)}</span>
         </div>
       </header>

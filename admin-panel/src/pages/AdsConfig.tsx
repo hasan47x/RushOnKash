@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Save, Signal, RotateCcw, Loader2, AlertTriangle } from 'lucide-react';
+import { Save, Signal, RotateCcw, Loader2, AlertTriangle, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { cn } from '../../shared/utils/cn';
+import { cn } from '../utils/cn';
+import { parseConfig } from '../utils/config';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
@@ -53,7 +54,7 @@ export function AdsConfig() {
         .single();
       if (error && error.code !== 'PGRST116') throw error;
       if (data?.value) {
-        setConfig(JSON.parse(data.value));
+        setConfig(prev => ({ ...prev, ...parseConfig(data.value, {}) }));
       }
     } catch (err) {
       console.error('Config fetch error:', err);
@@ -68,7 +69,7 @@ export function AdsConfig() {
     try {
       const { error } = await supabase
         .from('app_config')
-        .upsert({ key: 'ad_config', value: JSON.stringify(config), updated_at: new Date().toISOString() });
+        .upsert({ key: 'ad_config', value: config, updated_at: new Date().toISOString() });
       if (error) throw error;
       setMessage({ type: 'success', text: 'Ad configuration saved successfully!' });
     } catch (err) {

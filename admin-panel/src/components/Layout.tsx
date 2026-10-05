@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Link, useLocation, NavLink } from 'react-router-dom';
+import { Link, useLocation, NavLink, Outlet } from 'react-router-dom';
 import { LayoutDashboard, Users, CreditCard, Gamepad2, Signal, ListChecks, Bot, BarChart3, Settings, LogOut, Menu, X, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../utils/cn';
@@ -16,7 +16,7 @@ const navItems = [
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({ children }: { children?: React.ReactNode }) {
   const location = useLocation();
   const { admin, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -114,7 +114,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </header>
 
         <div className="p-6 max-w-7xl mx-auto">
-          {children}
+          {children ?? <Outlet />}
         </div>
       </main>
     </div>

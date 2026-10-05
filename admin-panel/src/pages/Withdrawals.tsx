@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, CheckCircle, XCircle, Clock, MoreHorizontal, CreditCard, Download, Eye } from 'lucide-react';
+import { Search, Filter, CheckCircle, XCircle, Clock, MoreHorizontal, CreditCard, Download, Eye, Loader2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { formatCurrency, formatNumber, cn } from '../../shared/utils/cn';
+import { formatCurrency, formatNumber, cn } from '../utils/cn';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;

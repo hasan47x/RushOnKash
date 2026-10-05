@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Coin, RotateCcw, CheckCircle, XCircle, Zap, ArrowLeft, Trophy, Settings } from 'lucide-react';
+import { Coins, RotateCcw, CheckCircle, XCircle, Zap, ArrowLeft, Trophy, Settings, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useConfig } from '../../context/ConfigContext';
 import { useTelegram } from '../../context/TelegramContext';
 import { cn, formatCurrency } from '../../utils/cn';
-import { LoadingSpinner } from '../../components/LoadingSpinner';
 
 const COIN_SIDES = ['heads', 'tails'] as const;
 type CoinSide = 'heads' | 'tails';
@@ -62,7 +61,7 @@ export function CoinFlip() {
     
     setHistory(prev => [{
       side: outcome,
-      result: isWin ? 'win' : 'loss',
+      result: (isWin ? 'win' : 'loss') as 'win' | 'loss',
       reward,
       time: new Date(),
     }, ...prev].slice(0, 10));
@@ -94,7 +93,7 @@ export function CoinFlip() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Coin className="w-6 h-6 text-amber-500" />
+            <Coins className="w-6 h-6 text-amber-500" />
             <span className="font-semibold">Daily Limit</span>
           </div>
           <span className="font-bold text-primary-500">{remaining}/{dailyLimit}</span>
@@ -120,7 +119,7 @@ export function CoinFlip() {
             <div className={cn('w-24 h-24 rounded-full flex items-center justify-center mx-auto', 
               selectedSide === side ? 'bg-gradient-to-br from-amber-500 to-orange-500' : 'bg-dark-800'
             )}>
-              <Coin className={cn('w-10 h-10', selectedSide === side ? 'text-white' : 'text-dark-400')} />
+              <Coins className={cn('w-10 h-10', selectedSide === side ? 'text-white' : 'text-dark-400')} />
             </div>
             <span className={cn('font-semibold text-lg', selectedSide === side ? 'text-primary-500' : 'text-white')}>
               {side.charAt(0).toUpperCase() + side.slice(1)}
@@ -147,7 +146,7 @@ export function CoinFlip() {
       {flipping && (
         <div className="card text-center py-8">
           <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center mx-auto mb-4 animate-spin">
-            <Coin className="w-12 h-12 text-white" />
+            <Coins className="w-12 h-12 text-white" />
           </div>
           <p className="text-lg font-semibold">Flipping...</p>
           <p className="text-dark-400">Your choice: {selectedSide}</p>
@@ -159,7 +158,7 @@ export function CoinFlip() {
           <div className={cn('w-28 h-28 rounded-full flex items-center justify-center mx-auto mb-4',
             result === selectedSide ? 'bg-gradient-to-br from-green-500 to-emerald-500' : 'bg-gradient-to-br from-red-500 to-orange-500'
           )}>
-            <Coin className="w-14 h-14 text-white" />
+            <Coins className="w-14 h-14 text-white" />
           </div>
           
           <h2 className={cn('text-2xl font-bold mb-2', result === selectedSide ? 'text-green-500' : 'text-red-500')}>
@@ -208,7 +207,7 @@ export function CoinFlip() {
                   <div className={cn('w-8 h-8 rounded-full flex items-center justify-center',
                     h.result === 'win' ? 'bg-green-500/20' : 'bg-red-500/20'
                   )}>
-                    <Coin className={cn('w-4 h-4', h.result === 'win' ? 'text-green-500' : 'text-red-500')} />
+                    <Coins className={cn('w-4 h-4', h.result === 'win' ? 'text-green-500' : 'text-red-500')} />
                   </div>
                   <div>
                     <p className="text-sm font-medium capitalize">{h.side}</p>
@@ -230,6 +229,6 @@ export function CoinFlip() {
   );
 }
 
-function getRandomItem<T>(array: T[]): T {
+function getRandomItem<T>(array: readonly T[]): T {
   return array[Math.floor(Math.random() * array.length)];
 }

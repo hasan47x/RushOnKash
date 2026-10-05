@@ -1,8 +1,20 @@
-import { Scenes, Markup, Telegraf } from 'telegraf';
+import { Scenes, Markup } from 'telegraf';
 import { BotContext } from '../index';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { supabase } from '../index';
+
+function parseJson<T>(value: unknown, fallback: T): T {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  if (value && typeof value === 'object') return value as T;
+  return fallback;
+}
 
 export const adminScene = new Scenes.WizardScene<BotContext>(
   'admin',
@@ -35,11 +47,14 @@ export const adminScene = new Scenes.WizardScene<BotContext>(
     );
     return ctx.wizard.next();
   },
-  async (ctx) => {
-    if (!ctx.callbackQuery) return;
-    
-    const action = ctx.callbackQuery.data;
+  async (ctx, next) => {
+    if (!ctx.callbackQuery) {
+      return next();
+    }
+
+    const action = (ctx.callbackQuery as { data?: string }).data;
     await ctx.answerCbQuery();
+    if (!action) return;
 
     switch (action) {
       case 'admin_users':
@@ -68,6 +83,7 @@ export const adminScene = new Scenes.WizardScene<BotContext>(
         await ctx.reply('📢 Enter broadcast message (HTML supported):');
         break;
       case 'admin_exit':
+        delete ctx.session.adminState;
         await ctx.reply('👋 Admin panel closed');
         return ctx.scene.leave();
     }
@@ -120,8 +136,16 @@ async function showGameConfig(ctx: BotContext) {
     .select('key, value')
     .in('key', ['coinflip_config', 'spin_config']);
 
-  const coinflip = configData?.find(c => c.key === 'coinflip_config')?.value ? JSON.parse(configData.find(c => c.key === 'coinflip_config')!.value) : { winReward: 0.05, lossReward: 0, dailyLimit: 20 };
-  const spin = configData?.find(c => c.key === 'spin_config')?.value ? JSON.parse(configData.find(c => c.key === 'spin_config')!.value) : { dailyLimit: 10, segments: [] };
+  const coinflipVal = configData?.find(c => c.key === 'coinflip_config')?.value;
+  const coinflip = parseJson<{ winReward: number; lossReward: number; dailyLimit: number }>(
+    coinflipVal,
+    { winReward: 0.05, lossReward: 0, dailyLimit: 20 }
+  );
+  const spinVal = configData?.find(c => c.key === 'spin_config')?.value;
+  const spin = parseJson<{ dailyLimit: number; segments?: unknown[] }>(
+    spinVal,
+    { dailyLimit: 10, segments: [] }
+  );
 
   let text = `🎮 <b>Game Configuration</b>\n\n`;
   text += `🎲 <b>CoinFlip</b>\n`;
@@ -142,7 +166,11 @@ async function showAdConfig(ctx: BotContext) {
     .select('key, value')
     .in('key', ['ad_config']);
 
-  const ad = configData?.[0]?.value ? JSON.parse(configData[0].value) : { enabled: true, rewardPerAd: 0.05, dailyAdLimit: 10 };
+  const adVal = configData?.[0]?.value;
+  const ad = parseJson<{ enabled: boolean; rewardPerAd: number; dailyAdLimit: number; watchSeconds?: number }>(
+    adVal,
+    { enabled: true, rewardPerAd: 0.05, dailyAdLimit: 10 }
+  );
 
   let text = `📺 <b>Ad Configuration</b>\n\n`;
   text += `Status: ${ad.enabled ? '✅ Enabled' : '❌ Disabled'}\n`;
@@ -162,7 +190,13 @@ async function showTaskConfig(ctx: BotContext) {
     .select('key, value')
     .in('key', ['task_config']);
 
-  const task = configData?.[0]?.value ? JSON.parse(configData[0].value) : { channelJoinReward: 1, youtubeSubReward: 2, facebookFollowReward: 1, dailyLoginReward: 0.5 };
+  const taskVal = configData?.[0]?.value;
+  const task = parseJson<{
+    channelJoinReward: number;
+    youtubeSubReward: number;
+    facebookFollowReward: number;
+    dailyLoginReward: number;
+  }>(taskVal, { channelJoinReward: 1, youtubeSubReward: 2, facebookFollowReward: 1, dailyLoginReward: 0.5 });
 
   let text = `📋 <b>Task Configuration</b>\n\n`;
   text += `📢 Channel Join: ${task.channelJoinReward} ${config.currencySymbol}\n`;
@@ -235,11 +269,14 @@ export const withdrawScene = new Scenes.WizardScene<BotContext>(
     );
     return ctx.wizard.next();
   },
-  async (ctx) => {
-    if (!ctx.callbackQuery) return;
-    
-    const action = ctx.callbackQuery.data;
+  async (ctx, next) => {
+    if (!ctx.callbackQuery) {
+      return next();
+    }
+
+    const action = (ctx.callbackQuery as { data?: string }).data;
     await ctx.answerCbQuery();
+    if (!action) return;
 
     if (action === 'withdraw_cancel') {
       await ctx.editMessageText('❌ Withdrawal cancelled');
@@ -248,7 +285,7 @@ export const withdrawScene = new Scenes.WizardScene<BotContext>(
 
     const method = action.replace('withdraw_', '');
     ctx.session.withdrawState = { method, step: 'amount' };
-    
+
     await ctx.editMessageText(
       `💸 <b>Withdraw via ${method.toUpperCase()}</b>\n\n` +
       `Enter amount (minimum 100 ${config.currencySymbol}):`,
@@ -257,61 +294,62 @@ export const withdrawScene = new Scenes.WizardScene<BotContext>(
     return ctx.wizard.next();
   },
   async (ctx) => {
-    if (!ctx.message?.text) return;
-    
-    const amount = parseFloat(ctx.message.text);
+    const msg = ctx.message;
+    if (!msg || !('text' in msg)) return;
+
+    const amount = parseFloat(msg.text);
     if (isNaN(amount) || amount < 100) {
       return ctx.reply(`❌ Invalid amount. Minimum 100 ${config.currencySymbol}`);
     }
-    
+
     if (!ctx.user || amount > ctx.user.balance) {
       return ctx.reply(`❌ Insufficient balance. You have ${ctx.user?.balance.toFixed(2) || 0} ${config.currencySymbol}`);
     }
 
-    ctx.session.withdrawState = { ...ctx.session.withdrawState, amount, step: 'account' };
-    await ctx.reply(`📱 Enter your ${ctx.session.withdrawState.method.toUpperCase()} account number:`);
+    const st = ctx.session.withdrawState;
+    if (!st) return ctx.scene.leave();
+    ctx.session.withdrawState = { ...st, amount, step: 'account' };
+    await ctx.reply(`📱 Enter your ${st.method.toUpperCase()} account number:`);
     return ctx.wizard.next();
   },
   async (ctx) => {
-    if (!ctx.message?.text) return;
-    
-    const accountNumber = ctx.message.text.trim();
+    const msg = ctx.message;
+    if (!msg || !('text' in msg)) return;
+
+    const accountNumber = msg.text.trim();
     if (!accountNumber) return ctx.reply('❌ Please enter a valid account number.');
 
-    const { amount, method } = ctx.session.withdrawState!;
-    if (!ctx.user) return ctx.scene.leave();
+    const st = ctx.session.withdrawState;
+    if (!ctx.user || !st || st.amount === undefined) return ctx.scene.leave();
+    const amount = st.amount;
+    const method = st.method;
 
-    const { data: withdrawal, error } = await supabase
-      .from('withdrawals')
-      .insert({
-        user_id: ctx.user.id,
-        amount,
-        method,
-        account_number: accountNumber,
-        status: 'pending',
-      })
-      .select()
-      .single();
+    const { data: result } = await supabase.rpc('process_withdrawal', {
+      user_id: ctx.user.id,
+      amount,
+      method,
+      account_number: accountNumber,
+    });
 
-    if (error) {
-      logger.error('Withdrawal failed', { error: error.message });
-      return ctx.reply('❌ Failed to submit withdrawal.');
+    if (!result?.success) {
+      logger.error('Withdrawal failed', { error: result?.error ?? result?.message });
+      return ctx.reply(`❌ Failed to submit withdrawal: ${result?.error ?? 'unknown_error'}`);
     }
 
     delete ctx.session.withdrawState;
-    
+
     await ctx.reply(
       `✅ <b>Withdrawal Request Submitted</b>\n\n` +
       `💰 Amount: ${amount.toFixed(2)} ${config.currencySymbol}\n` +
       `🏦 Method: ${method.toUpperCase()}\n` +
       `📱 Account: ${accountNumber}\n` +
-      `📋 Request ID: <code>${withdrawal.id.slice(0, 8)}</code>\n\n` +
+      `📋 Request ID: <code>${String(result.order_id).slice(0, 8)}</code>\n\n` +
       `Status: ⏳ Pending`,
       { parse_mode: 'HTML', ...Markup.inlineKeyboard([
         [Markup.button.callback('🏠 Main Menu', 'main_menu')],
       ])}
     );
-    
+
     return ctx.scene.leave();
   }
 );

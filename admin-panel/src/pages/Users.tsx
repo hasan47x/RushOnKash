@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, MoreVertical, Edit, Trash2, Ban, Shield, Mail, Phone, Calendar, MoreHorizontal } from 'lucide-react';
+import { Search, Filter, MoreVertical, Edit, Trash2, Ban, Shield, Mail, Phone, Calendar, MoreHorizontal, Loader2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { formatCurrency, formatNumber, cn } from '../../shared/utils/cn';
+import { formatCurrency, formatNumber, cn } from '../utils/cn';
 import { StatCard } from '../components/StatCard';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;

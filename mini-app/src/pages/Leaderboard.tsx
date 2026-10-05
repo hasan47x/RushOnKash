@@ -3,21 +3,15 @@ import { Trophy, ArrowLeft, User, Star, TrendingUp, Medal, ChevronRight } from '
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTelegram } from '../context/TelegramContext';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import { cn, formatCurrency, formatNumber, getInitials } from '../utils/cn';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface LeaderboardEntry {
   id: string;
-  telegram_id: string;
   first_name: string;
   last_name?: string;
   username?: string;
   photo_url?: string;
-  balance: number;
   referral_count: number;
   coinflip_won: number;
   spin_won: number;
@@ -44,9 +38,8 @@ export function Leaderboard() {
       if (activeTab === 'referrals') orderColumn = 'referral_count';
 
       const { data, error } = await supabase
-        .from('users')
-        .select('id, telegram_id, first_name, last_name, username, photo_url, balance, referral_count, coinflip_won, spin_won, total_earned')
-        .eq('is_banned', false)
+        .from('leaderboard_view')
+        .select('id, first_name, last_name, username, photo_url, referral_count, coinflip_won, spin_won, total_earned')
         .order(orderColumn, { ascending: false })
         .limit(100);
 
@@ -110,7 +103,7 @@ export function Leaderboard() {
             key={tab.id}
             role="tab"
             aria-selected={activeTab === tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => setActiveTab(tab.id as 'earnings' | 'wins' | 'referrals')}
             className={cn(
               'flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm whitespace-nowrap transition-all',
               activeTab === tab.id
@@ -203,5 +196,3 @@ export function Leaderboard() {
     </div>
   );
 }
-
-import { formatCurrency, formatNumber } from '../utils/cn';

@@ -1,5 +1,5 @@
 import { UserPlus, CreditCard, AlertCircle, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { formatCurrency } from '../../shared/utils/cn';
+import { formatCurrency } from '../utils/cn';
 
 interface ActivityItem {
   type: 'user' | 'withdrawal' | 'game';
