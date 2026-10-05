@@ -11,7 +11,11 @@ const envSchema = z.object({
   BOT_TOKEN: z.string().min(1),
   WEBHOOK_URL: optionalUrl,
   WEBHOOK_SECRET: z.string().optional(),
-  PORT: z.coerce.number().default(3000),
+  // Panels (SillyDev/Pterodactyl) inject SERVER_PORT and it always wins
+  PORT: z.preprocess(
+    (v) => process.env.SERVER_PORT ?? v,
+    z.coerce.number().default(3000)
+  ),
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string().min(1),
   SUPABASE_SERVICE_KEY: z.string().min(1),

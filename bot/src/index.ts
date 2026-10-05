@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import http from 'node:http';
-import { Telegraf, session, Scenes, Context } from 'telegraf';
+import { Telegraf, session, Scenes, Context, MemorySessionStore } from 'telegraf';
 import { createClient } from '@supabase/supabase-js';
 import { config, AdminState, WithdrawState } from './config';
 import { logger } from './utils/logger';
@@ -52,7 +52,8 @@ export interface BotContext extends Context {
 
 const bot = new Telegraf<BotContext>(config.botToken);
 
-bot.use(session());
+// 24h TTL so inactive sessions don't grow memory forever (256MB hosts)
+bot.use(session({ store: new MemorySessionStore<SessionData>(24 * 60 * 60 * 1000) }));
 
 bot.use(async (ctx, next) => {
   const start = Date.now();
