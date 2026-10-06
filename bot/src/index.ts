@@ -2,6 +2,7 @@ import 'dotenv/config';
 import http from 'node:http';
 import { Telegraf, session, Scenes, Context, MemorySessionStore } from 'telegraf';
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import { config, AdminState, WithdrawState } from './config';
 import { logger } from './utils/logger';
 import { setupCommands } from './handlers/commands';
@@ -9,7 +10,9 @@ import { setupCallbacks } from './handlers/callbacks';
 import { setupMessages } from './handlers/messages';
 import { adminScene, withdrawScene } from './scenes';
 
-export const supabase = createClient(config.supabaseUrl, config.supabaseServiceKey);
+export const supabase = createClient(config.supabaseUrl, config.supabaseServiceKey, {
+  realtime: { transport: WebSocket as unknown as never },
+});
 
 let httpServer: http.Server | undefined;
 
@@ -192,12 +195,20 @@ main().catch((error) => {
 });
 
 process.once('SIGINT', () => {
-  bot.stop('SIGINT');
+  try {
+    bot.stop('SIGINT');
+  } catch {
+  }
   httpServer?.close();
+  process.exit(0);
 });
 process.once('SIGTERM', () => {
-  bot.stop('SIGTERM');
+  try {
+    bot.stop('SIGTERM');
+  } catch {
+  }
   httpServer?.close();
+  process.exit(0);
 });
 
 export { bot };
