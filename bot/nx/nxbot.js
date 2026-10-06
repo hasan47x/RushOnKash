@@ -1,6 +1,7 @@
 /*
- * RushOnCash — NxCreate edition
- * Paste this whole file into the NxCreate Code Editor and Save.
+ * RushOnCash — NxCreate edition v2
+ * Fixes: no `Prefer` header (crashes platform axios), no manual
+ * Content-Type, raw keyboards (no Markup), bot.catch present.
  *
  * Env (Env Editor, one per line):
  *   SUPABASE_URL=https://scpgzdfegmqkczvxziis.supabase.co
@@ -12,7 +13,7 @@
  * BOT_TOKEN is injected by the platform — do not set it.
  */
 
-// ═══════════ [SECTION 1] Config & helpers ═══════════
+// ═══════════ 1. CONFIG & HELPERS ═══════════
 
 const CFG = {
   currency: '৳',
@@ -43,7 +44,7 @@ function parseJson(value, fallback) {
 }
 
 function isAdmin(ctx) {
-  return Boolean(ctx.from) && CFG.adminIds.indexOf(String(ctx.from.id)) !== -1;
+  return !!ctx.from && CFG.adminIds.indexOf(String(ctx.from.id)) !== -1;
 }
 
 function generateReferralCode() {
@@ -53,14 +54,22 @@ function generateReferralCode() {
   return code;
 }
 
-// webApp button only when MINI_APP_URL is configured, else a safe callback
+// raw keyboard helpers (Markup global avoided — works per platform test)
+function kb(rows) {
+  return { reply_markup: { inline_keyboard: rows } };
+}
+function cb(text, data) {
+  return { text: text, callback_data: data };
+}
+function urlBtn(text, u) {
+  return { text: text, url: u };
+}
 function miniBtn(label, query) {
-  if (CFG.miniAppUrl) return Markup.button.webApp(label, CFG.miniAppUrl + (query || ''));
-  return Markup.button.callback(label, 'mini_app_pending');
+  const url = CFG.miniAppUrl ? CFG.miniAppUrl + (query || '') : '';
+  return url ? { text: label, web_app: { url: url } } : cb(label, 'mini_app_pending');
 }
 
-// In-memory per-user flow state (withdraw wizard / admin broadcast).
-// Survives for FLOW_TTL; cleared automatically. Reset on bot re-save is OK.
+// In-memory per-user flow state (withdraw wizard / admin broadcast)
 const FLOW = new Map();
 const FLOW_TTL = 15 * 60 * 1000;
 
@@ -76,11 +85,13 @@ function getFlow(uid) {
 }
 function delFlow(uid) { FLOW.delete(String(uid)); }
 
-// ═══════════ [SECTION 2] Supabase REST client (axios) ═══════════
+// ═══════════ 2. SUPABASE REST CLIENT (axios) ═══════════
+// NOTE: never send `Prefer` or manual Content-Type — platform axios crashes.
 
-function sh(extra) {
-  return Object.assign({ apikey: CFG.supabaseKey, Authorization: 'Bearer ' + CFG.supabaseKey }, extra || {});
+function sh() {
+  return { apikey: CFG.supabaseKey, Authorization: 'Bearer ' + CFG.supabaseKey };
 }
+
 function errMsg(e) {
   if (e && e.response && e.response.data) {
     const d = e.response.data;
@@ -88,6 +99,8 @@ function errMsg(e) {
   }
   return (e && e.message) || String(e);
 }
+
+// returns query params WITHOUT leading '?'
 function qs(filters, order, limit) {
   const p = [];
   if (filters) {
@@ -95,91 +108,94 @@ function qs(filters, order, limit) {
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i];
       const v = filters[k];
-      if (v && typeof v === 'object' && v.in) {
-        p.push(k + '=in.(' + v.in.map((x) => encodeURIComponent(x)).join(',') + ')');
-      } else {
-        p.push(k + '=eq.' + encodeURIComponent(v));
+      if (v !== undefined && v !== null) {
+        if (typeof v === 'object' && v.in) {
+          p.push(k + '=in.(' + v.in.map((x) => encodeURIComponent(x)).join(',') + ')');
+        } else {
+          p.push(k + '=eq.' + encodeURIComponent(v));
+        }
       }
     }
   }
   if (order) p.push('order=' + order.col + '.' + (order.asc ? 'asc' : 'desc'));
   if (limit) p.push('limit=' + limit);
-  return p.length ? '?' + p.join('&') : '';
+  return p.join('&');
 }
+
 async function rpc(name, body) {
   try {
     const r = await axios.post(
       CFG.supabaseUrl + '/rest/v1/rpc/' + name,
       body === undefined ? {} : body,
-      { headers: sh({ 'Content-Type': 'application/json' }) }
+      { headers: sh() }
     );
     return { data: r.data, error: null };
   } catch (e) {
     return { data: null, error: { message: errMsg(e) } };
   }
 }
+
 async function selectMany(table, filters, opts) {
   opts = opts || {};
   try {
+    const extra = qs(filters, opts.order, opts.limit);
     const url =
       CFG.supabaseUrl + '/rest/v1/' + table +
       '?select=' + encodeURIComponent(opts.cols || '*') +
-      qs(filters, opts.order, opts.limit);
+      (extra ? '&' + extra : '');
     const r = await axios.get(url, { headers: sh() });
     return { data: r.data, error: null };
   } catch (e) {
     return { data: null, error: { message: errMsg(e) } };
   }
 }
+
 async function selectOne(table, filters, opts) {
   const res = await selectMany(table, filters, opts);
   if (res.error) return { data: null, error: res.error };
   return { data: res.data && res.data.length ? res.data[0] : null, error: null };
 }
+
+// insert without representation — caller re-selects if it needs the row
 async function insertRow(table, row) {
   try {
-    const r = await axios.post(CFG.supabaseUrl + '/rest/v1/' + table, row, {
-      headers: sh({ 'Content-Type': 'application/json', Prefer: 'return=representation' }),
-    });
-    return { data: r.data && r.data[0], error: null };
+    await axios.post(CFG.supabaseUrl + '/rest/v1/' + table, row, { headers: sh() });
+    return { error: null };
   } catch (e) {
-    return { data: null, error: { message: errMsg(e) } };
-  }
-}
-async function updateRows(table, filters, patch) {
-  try {
-    const r = await axios.patch(
-      CFG.supabaseUrl + '/rest/v1/' + table + qs(filters),
-      patch,
-      { headers: sh({ 'Content-Type': 'application/json', Prefer: 'return=representation' }) }
-    );
-    return { data: r.data, error: null };
-  } catch (e) {
-    return { data: null, error: { message: errMsg(e) } };
-  }
-}
-async function countRows(table, filters) {
-  try {
-    const r = await axios.head(
-      CFG.supabaseUrl + '/rest/v1/' + table + '?select=*' + qs(filters),
-      { headers: sh({ Prefer: 'count=exact' }) }
-    );
-    const cr = r.headers && (r.headers['content-range'] || (r.headers.get && r.headers.get('content-range')));
-    const m = cr && cr.match(/\/(\d+)\s*$/);
-    return m ? parseInt(m[1], 10) : 0;
-  } catch (e) {
-    return 0;
+    return { error: { message: errMsg(e) } };
   }
 }
 
-// ═══════════ [SECTION 3] App config & user lookup ═══════════
+async function updateRows(table, filters, patch) {
+  try {
+    const extra = qs(filters);
+    await axios.patch(
+      CFG.supabaseUrl + '/rest/v1/' + table + (extra ? '?' + extra : ''),
+      patch,
+      { headers: sh() }
+    );
+    return { error: null };
+  } catch (e) {
+    return { error: { message: errMsg(e) } };
+  }
+}
+
+// count via select length (no `Prefer: count=exact` — that header crashes)
+async function countRows(table, filters) {
+  const { data, error } = await selectMany(table, filters, { cols: 'id', limit: 10000 });
+  if (error) return 0;
+  return (data || []).length;
+}
+
+// ═══════════ 3. APP CONFIG & USER LOOKUP ═══════════
 
 let _ready = null;
 function ensureConfig() {
   if (!_ready) {
     _ready = (async function () {
       try {
-        const { data } = await selectOne('app_config', { key: 'bot_config' });
+        const { data, error } = await selectOne('app_config', { key: 'bot_config' });
+        if (error) log('app_config select error', { error: error.message });
         const v = parseJson(data && data.value, null);
         if (v && typeof v === 'object') {
           if (typeof v.botUsername === 'string' && v.botUsername) CFG.botUsername = v.botUsername;
@@ -196,7 +212,7 @@ function ensureConfig() {
             CFG.botUsername = me.username;
           } catch (e) {}
         }
-        log('app_config loaded', { admins: CFG.adminIds.length, bot: CFG.botUsername });
+        log('app_config ready', { admins: CFG.adminIds.length, bot: CFG.botUsername, fromDb: !!v });
       } catch (e) {
         log('app_config load failed', { error: (e && e.message) || String(e) });
       }
@@ -212,7 +228,7 @@ async function getUser(ctx) {
   return data;
 }
 
-// ═══════════ [SECTION 4] Commands ═══════════
+// ═══════════ 4. COMMANDS ═══════════
 
 bot.command('start', async (ctx) => {
   await ensureConfig();
@@ -236,7 +252,7 @@ bot.command('start', async (ctx) => {
 
   if (!user) {
     const referralCode = generateReferralCode();
-    const { data: newUser, error } = await insertRow('users', {
+    const { error } = await insertRow('users', {
       telegram_id: userId,
       username: (ctx.from && ctx.from.username) || null,
       first_name: (ctx.from && (ctx.from.first_name || ctx.from.username)) || 'User',
@@ -258,19 +274,22 @@ bot.command('start', async (ctx) => {
     });
 
     if (error) {
-      log('user creation failed', { error: error.message, userId });
+      log('user creation failed', { error: error.message, userId: userId });
       return ctx.reply('❌ Failed to create account. Please try again.');
     }
 
-    if (referrerUser && referrerUser.id !== newUser.id) {
+    // fetch the inserted row (no Prefer header → re-select)
+    const { data: fresh } = await selectOne('users', { telegram_id: userId });
+
+    if (referrerUser && fresh && referrerUser.id !== fresh.id) {
       const { error: refErr } = await insertRow('referrals', {
         referrer_id: referrerUser.id,
-        referred_id: newUser.id,
+        referred_id: fresh.id,
       });
       if (!refErr) {
         const { data: claim } = await rpc('claim_referral_bonus', {
           referrer_id: referrerUser.id,
-          referred_id: newUser.id,
+          referred_id: fresh.id,
           bonus: CFG.referralBonus,
         });
         if (claim && claim.success) {
@@ -285,7 +304,7 @@ bot.command('start', async (ctx) => {
       '🎉 Welcome to RushOnCash!\n\n' +
       'Your referral code: <code>' + referralCode + '</code>\n' +
       'Share it with friends and earn ' + (CFG.referralBonus || 1) + ' ' + CFG.currency + ' per referral!',
-      { parse_mode: 'HTML', ...Markup.inlineKeyboard([[miniBtn('🎮 Open Mini App')]]) }
+      { parse_mode: 'HTML', ...kb([[miniBtn('🎮 Open Mini App')]]) }
     );
   }
 
@@ -294,7 +313,7 @@ bot.command('start', async (ctx) => {
     '💰 Balance: ' + Number(user.balance).toFixed(2) + ' ' + CFG.currency + '\n' +
     '👥 Referrals: ' + user.referral_count + '\n' +
     '🔗 Your code: <code>' + user.referral_code + '</code>',
-    { parse_mode: 'HTML', ...Markup.inlineKeyboard([[miniBtn('🎮 Open Mini App')]]) }
+    { parse_mode: 'HTML', ...kb([[miniBtn('🎮 Open Mini App')]]) }
   );
 });
 
@@ -324,9 +343,7 @@ bot.command('referral', async (ctx) => {
     'You earn <b>' + (CFG.referralBonus || 1) + ' ' + CFG.currency + '</b> per referral!',
     {
       parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.url('📤 Share on Telegram', 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent('Join RushOnCash and earn money!'))],
-      ]),
+      ...kb([[urlBtn('📤 Share on Telegram', 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent('Join RushOnCash and earn money!'))]]),
     }
   );
 });
@@ -341,7 +358,7 @@ bot.command('games', async (ctx) => {
     '🎲 <b>CoinFlip</b> - Flip a coin, win if you guess right!\n' +
     '🎡 <b>Spin Wheel</b> - Spin the wheel for rewards!\n\n' +
     'Open Mini App to play:',
-    { parse_mode: 'HTML', ...Markup.inlineKeyboard([[miniBtn('🎮 Play Games')]]) }
+    { parse_mode: 'HTML', ...kb([[miniBtn('🎮 Play Games')]]) }
   );
 });
 
@@ -370,16 +387,14 @@ bot.command('stats', async (ctx) => {
   const results = await Promise.all([
     countRows('users'),
     countRows('withdrawals', { status: 'pending' }),
-    selectMany('users', null, { cols: 'balance' }),
+    selectMany('users', null, { cols: 'balance', limit: 10000 }),
   ]);
-  const users = results[0];
-  const withdrawals = results[1];
   const totalBal = (results[2].data || []).reduce((sum, u) => sum + (u.balance || 0), 0);
   return ctx.reply(
     '📊 <b>Bot Statistics</b>\n\n' +
-    '👥 Total Users: ' + users + '\n' +
+    '👥 Total Users: ' + results[0] + '\n' +
     '💰 Total Balance: ' + totalBal.toFixed(2) + ' ' + CFG.currency + '\n' +
-    '⏳ Pending Withdrawals: ' + withdrawals,
+    '⏳ Pending Withdrawals: ' + results[1],
     { parse_mode: 'HTML' }
   );
 });
@@ -391,7 +406,7 @@ bot.command('broadcast', async (ctx) => {
   return queueBroadcast(ctx, message);
 });
 
-// ═══════════ [SECTION 5] Callback buttons (menu) ═══════════
+// ═══════════ 5. CALLBACK BUTTONS (menu) ═══════════
 
 bot.action('mini_app_pending', async (ctx) => {
   await ctx.answerCbQuery('Mini App link not set yet — add MINI_APP_URL env', { show_alert: true });
@@ -399,7 +414,7 @@ bot.action('mini_app_pending', async (ctx) => {
 
 bot.action('open_mini_app', async (ctx) => {
   await ctx.answerCbQuery();
-  return ctx.reply('Opening Mini App...', Markup.inlineKeyboard([[miniBtn('🎮 Open RushOnCash')]]));
+  return ctx.reply('Opening Mini App...', kb([[miniBtn('🎮 Open RushOnCash')]]));
 });
 
 bot.action('check_balance', async (ctx) => {
@@ -410,9 +425,9 @@ bot.action('check_balance', async (ctx) => {
     '💰 <b>Your Balance</b>\n\nAvailable: <b>' + Number(user.balance).toFixed(2) + '</b> ' + CFG.currency,
     {
       parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('🔄 Refresh', 'check_balance')],
-        [Markup.button.callback('💸 Withdraw', 'withdraw_menu')],
+      ...kb([
+        [cb('🔄 Refresh', 'check_balance')],
+        [cb('💸 Withdraw', 'withdraw_menu')],
       ]),
     }
   );
@@ -437,9 +452,9 @@ bot.action('referral_info', async (ctx) => {
     'Link: ' + link,
     {
       parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.url('📤 Share', 'https://t.me/share/url?url=' + encodeURIComponent(link))],
-        [Markup.button.callback('🔙 Back', 'main_menu')],
+      ...kb([
+        [urlBtn('📤 Share', 'https://t.me/share/url?url=' + encodeURIComponent(link))],
+        [cb('🔙 Back', 'main_menu')],
       ]),
     }
   );
@@ -455,11 +470,11 @@ bot.action('main_menu', async (ctx) => {
     '👥 Referrals: ' + user.referral_count,
     {
       parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('💰 Balance', 'check_balance')],
-        [Markup.button.callback('🎮 Games', 'games_menu')],
-        [Markup.button.callback('🔗 Referral', 'referral_info')],
-        [Markup.button.callback('💸 Withdraw', 'withdraw_menu')],
+      ...kb([
+        [cb('💰 Balance', 'check_balance')],
+        [cb('🎮 Games', 'games_menu')],
+        [cb('🔗 Referral', 'referral_info')],
+        [cb('💸 Withdraw', 'withdraw_menu')],
         [miniBtn('🌐 Open Mini App')],
       ]),
     }
@@ -475,10 +490,10 @@ bot.action('games_menu', async (ctx) => {
     'Play in Mini App:',
     {
       parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
+      ...kb([
         [miniBtn('🎮 Play CoinFlip', '?game=coinflip')],
         [miniBtn('🎮 Play Spin', '?game=spin')],
-        [Markup.button.callback('🔙 Back', 'main_menu')],
+        [cb('🔙 Back', 'main_menu')],
       ]),
     }
   );
@@ -508,10 +523,10 @@ async function startWithdrawFlow(ctx, isCallback) {
     'Select payment method:',
     {
       parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('💚 bKash', 'withdraw_bkash'), Markup.button.callback('🟠 Nagad', 'withdraw_nagad')],
-        [Markup.button.callback('🔵 Rocket', 'withdraw_rocket'), Markup.button.callback('🟡 Binance', 'withdraw_binance')],
-        [Markup.button.callback('❌ Cancel', 'withdraw_cancel')],
+      ...kb([
+        [cb('💚 bKash', 'withdraw_bkash'), cb('🟠 Nagad', 'withdraw_nagad')],
+        [cb('🔵 Rocket', 'withdraw_rocket'), cb('🟡 Binance', 'withdraw_binance')],
+        [cb('❌ Cancel', 'withdraw_cancel')],
       ]),
     }
   );
@@ -545,7 +560,7 @@ async function showAdminPanel(ctx) {
   const results = await Promise.all([
     countRows('users'),
     countRows('withdrawals', { status: 'pending' }),
-    selectMany('users', null, { cols: 'balance' }),
+    selectMany('users', null, { cols: 'balance', limit: 10000 }),
   ]);
   const totalBal = (results[2].data || []).reduce((sum, u) => sum + (u.balance || 0), 0);
   const text =
@@ -553,17 +568,17 @@ async function showAdminPanel(ctx) {
     '👥 Users: ' + results[0] + '\n' +
     '💰 Total Balance: ' + totalBal.toFixed(2) + ' ' + CFG.currency + '\n' +
     '⏳ Pending Withdrawals: ' + results[1];
-  const kb = Markup.inlineKeyboard([
-    [Markup.button.callback('👥 Users', 'admin_users'), Markup.button.callback('💸 Withdrawals', 'admin_withdrawals')],
-    [Markup.button.callback('🎮 Game Config', 'admin_games'), Markup.button.callback('📺 Ad Config', 'admin_ads')],
-    [Markup.button.callback('📋 Task Config', 'admin_tasks'), Markup.button.callback('⚙️ Bot Config', 'admin_bot')],
-    [Markup.button.callback('📊 Stats', 'admin_stats'), Markup.button.callback('📢 Broadcast', 'admin_broadcast')],
-    [Markup.button.callback('🚪 Exit', 'admin_exit')],
+  const markup = kb([
+    [cb('👥 Users', 'admin_users'), cb('💸 Withdrawals', 'admin_withdrawals')],
+    [cb('🎮 Game Config', 'admin_games'), cb('📺 Ad Config', 'admin_ads')],
+    [cb('📋 Task Config', 'admin_tasks'), cb('⚙️ Bot Config', 'admin_bot')],
+    [cb('📊 Stats', 'admin_stats'), cb('📢 Broadcast', 'admin_broadcast')],
+    [cb('🚪 Exit', 'admin_exit')],
   ]);
   try {
-    await ctx.editMessageText(text, { parse_mode: 'HTML', ...kb });
+    await ctx.editMessageText(text, { parse_mode: 'HTML', ...markup });
   } catch (e) {
-    await ctx.reply(text, { parse_mode: 'HTML', ...kb });
+    await ctx.reply(text, { parse_mode: 'HTML', ...markup });
   }
 }
 
@@ -590,7 +605,7 @@ bot.action('admin_users', async (ctx) => {
   if (!users || !users.length) text += 'No users yet.';
   await ctx.editMessageText(text, {
     parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back', 'admin_back')]]),
+    ...kb([[cb('🔙 Back', 'admin_back')]]),
   });
 });
 
@@ -612,7 +627,7 @@ bot.action('admin_withdrawals', async (ctx) => {
   if (!withdrawals || !withdrawals.length) text += 'No pending withdrawals.';
   await ctx.editMessageText(text, {
     parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back', 'admin_back')]]),
+    ...kb([[cb('🔙 Back', 'admin_back')]]),
   });
 });
 
@@ -620,9 +635,10 @@ bot.action('admin_games', async (ctx) => {
   if (!adminGuard(ctx)) return;
   await ctx.answerCbQuery();
   const { data: rows } = await selectMany('app_config', { key: { in: ['coinflip_config', 'spin_config'] } }, { cols: 'key, value' });
-  const coinflip = parseJson((rows || []).find((r) => r.key === 'coinflip_config') && (rows || []).find((r) => r.key === 'coinflip_config').value,
+  const list = rows || [];
+  const coinflip = parseJson(list.find((r) => r.key === 'coinflip_config') && list.find((r) => r.key === 'coinflip_config').value,
     { winReward: 0.05, lossReward: 0, dailyLimit: 20 });
-  const spin = parseJson((rows || []).find((r) => r.key === 'spin_config') && (rows || []).find((r) => r.key === 'spin_config').value,
+  const spin = parseJson(list.find((r) => r.key === 'spin_config') && list.find((r) => r.key === 'spin_config').value,
     { dailyLimit: 10, segments: [] });
   const text =
     '🎮 <b>Game Configuration</b>\n\n' +
@@ -630,9 +646,9 @@ bot.action('admin_games', async (ctx) => {
     '🎡 <b>Spin Wheel</b>\n   Daily Limit: ' + spin.dailyLimit + '\n   Segments: ' + ((spin.segments && spin.segments.length) || 0);
   await ctx.editMessageText(text, {
     parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('✏️ Edit CoinFlip', 'admin_edit_coinflip'), Markup.button.callback('✏️ Edit Spin', 'admin_edit_spin')],
-      [Markup.button.callback('🔙 Back', 'admin_back')],
+    ...kb([
+      [cb('✏️ Edit CoinFlip', 'admin_edit_coinflip'), cb('✏️ Edit Spin', 'admin_edit_spin')],
+      [cb('🔙 Back', 'admin_back')],
     ]),
   });
 });
@@ -650,9 +666,9 @@ bot.action('admin_ads', async (ctx) => {
     'Watch Time: ' + (ad.watchSeconds || 0) + 's';
   await ctx.editMessageText(text, {
     parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('✏️ Edit Ads', 'admin_edit_ads')],
-      [Markup.button.callback('🔙 Back', 'admin_back')],
+    ...kb([
+      [cb('✏️ Edit Ads', 'admin_edit_ads')],
+      [cb('🔙 Back', 'admin_back')],
     ]),
   });
 });
@@ -672,9 +688,9 @@ bot.action('admin_tasks', async (ctx) => {
     '📅 Daily Login: ' + task.dailyLoginReward + ' ' + CFG.currency;
   await ctx.editMessageText(text, {
     parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('✏️ Edit Tasks', 'admin_edit_tasks')],
-      [Markup.button.callback('🔙 Back', 'admin_back')],
+    ...kb([
+      [cb('✏️ Edit Tasks', 'admin_edit_tasks')],
+      [cb('🔙 Back', 'admin_back')],
     ]),
   });
 });
@@ -690,7 +706,7 @@ bot.action('admin_bot', async (ctx) => {
     'Maintenance: ' + (CFG.maintenanceMode ? '🔴 On' : '🟢 Off');
   await ctx.editMessageText(text, {
     parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back', 'admin_back')]]),
+    ...kb([[cb('🔙 Back', 'admin_back')]]),
   });
 });
 
@@ -700,8 +716,8 @@ bot.action('admin_stats', async (ctx) => {
   const results = await Promise.all([
     countRows('users'),
     countRows('withdrawals'),
-    selectMany('games_log', null, { cols: 'game_type, result' }),
-    selectMany('ads_log', null, { cols: 'provider, reward' }),
+    selectMany('games_log', null, { cols: 'game_type, result', limit: 10000 }),
+    selectMany('ads_log', null, { cols: 'provider, reward', limit: 10000 }),
   ]);
   const games = results[2].data || [];
   const ads = results[3].data || [];
@@ -718,7 +734,7 @@ bot.action('admin_stats', async (ctx) => {
     '💸 Total Withdrawals: ' + results[1];
   await ctx.editMessageText(text, {
     parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back', 'admin_back')]]),
+    ...kb([[cb('🔙 Back', 'admin_back')]]),
   });
 });
 
@@ -761,8 +777,19 @@ async function queueBroadcast(ctx, text) {
   }
 }
 
-// ═══════════ [SECTION 6] Text input (flows) ═══════════
-// Registered LAST so all commands/buttons above consume first.
+// ═══════════ 6. GLOBAL ERROR CATCHER ═══════════
+
+bot.catch((err, ctx) => {
+  log('bot_error', {
+    error: (err && err.message) || String(err),
+    update: ctx && ctx.update ? ctx.update.update_id : null,
+  });
+  try {
+    if (ctx && ctx.reply) ctx.reply('❌ Something went wrong. Please try again.');
+  } catch (e) {}
+});
+
+// ═══════════ 7. TEXT INPUT (flows) — registered LAST ═══════════
 
 bot.on('text', async (ctx) => {
   const text = (ctx.message && ctx.message.text) || '';
@@ -771,10 +798,7 @@ bot.on('text', async (ctx) => {
   const flow = getFlow(uid);
   if (!flow) return;
 
-  if (flow.step === 'w_method') {
-    // user typed instead of pressing a button — ignore, buttons are shown
-    return;
-  }
+  if (flow.step === 'w_method') return;
 
   if (flow.step === 'w_amount') {
     const amount = parseFloat(text);
@@ -811,7 +835,10 @@ bot.on('text', async (ctx) => {
 
     if (error || !result || !result.success) {
       log('withdrawal failed', { error: (result && (result.error || result.message)) || (error && error.message) });
-      return ctx.reply('❌ Failed to submit withdrawal: ' + ((result && (result.error || result.message)) || (error && error.message) || 'unknown_error'));
+      return ctx.reply(
+        '❌ Failed to submit withdrawal: ' +
+        ((result && (result.error || result.message)) || (error && error.message) || 'unknown_error')
+      );
     }
 
     await ctx.reply(
@@ -822,7 +849,7 @@ bot.on('text', async (ctx) => {
       '📋 Request ID: <code>' + String(result.order_id).slice(0, 8) + '</code>\n\n' +
       'Status: ⏳ Pending\n' +
       "You'll be notified once processed.",
-      { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🏠 Main Menu', 'main_menu')]]) }
+      { parse_mode: 'HTML', ...kb([[cb('🏠 Main Menu', 'main_menu')]]) }
     );
 
     if (CFG.withdrawGroupId) {

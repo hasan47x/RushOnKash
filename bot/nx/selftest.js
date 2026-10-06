@@ -26,6 +26,9 @@ const USER_111 = {
 
 function urlPath(u) { return u.split('?')[0]; }
 
+const CREATED = {};
+let createdSeq = 0;
+
 const axiosMock = {
   async get(url) {
     CALLS.axios.push(['GET', url]);
@@ -36,12 +39,24 @@ const axiosMock = {
       } }] };
     }
     if (urlPath(url).endsWith('/users')) {
-      if (url.includes('telegram_id=eq.111')) return { data: [USER_111] };
-      if (url.includes('telegram_id=eq.333')) return { data: [] };
+      const mId = url.match(/telegram_id=eq\.([^&]+)/);
+      if (mId) {
+        const tid = decodeURIComponent(mId[1]);
+        if (CREATED[tid]) return { data: [CREATED[tid]] };
+        if (tid === '111') return { data: [USER_111] };
+        return { data: [] };
+      }
+      if (url.includes('select=id&')) return { data: Array.from({ length: 150 }, (v, i) => ({ id: 'u' + i })) };
       if (url.includes('select=balance')) return { data: [{ balance: 500 }, { balance: 100 }] };
       return { data: [{ ...USER_111, first_name: 'Alice' }] };
     }
-    if (urlPath(url).endsWith('/withdrawals')) return { data: [] };
+    if (urlPath(url).endsWith('/withdrawals')) {
+      if (url.includes('select=id&')) {
+        const n = url.includes('status=eq.pending') ? 3 : 10;
+        return { data: Array.from({ length: n }, (v, i) => ({ id: 'w' + i })) };
+      }
+      return { data: [] };
+    }
     if (urlPath(url).endsWith('/games_log')) return { data: [{ game_type: 'coinflip' }, { game_type: 'spin' }] };
     if (urlPath(url).endsWith('/ads_log')) return { data: [{ provider: 'x', reward: 0.05 }] };
     if (urlPath(url).endsWith('/referrals')) return { data: [] };
@@ -51,7 +66,12 @@ const axiosMock = {
     CALLS.axios.push(['POST', url, body]);
     if (url.includes('/rest/v1/rpc/claim_referral_bonus')) return { data: { success: true } };
     if (url.includes('/rest/v1/rpc/process_withdrawal')) return { data: { success: true, order_id: 'abcd1234efgh5678' } };
-    if (urlPath(url).endsWith('/users')) return { data: [{ id: 'new333', ...body }] };
+    if (urlPath(url).endsWith('/users')) {
+      createdSeq++;
+      const row = { id: 'new' + createdSeq, ...body };
+      if (body && body.telegram_id) CREATED[body.telegram_id] = row;
+      return { data: [row] };
+    }
     if (urlPath(url).endsWith('/referrals')) return { data: [{}] };
     return { data: {} };
   },
@@ -82,6 +102,7 @@ const botMock = {
   action(trigger, fn) { handlers.actions.push({ trigger, fn }); return this; },
   on(event, fn) { handlers.events.push({ event, fn }); return this; },
   hears() { return this; },
+  catch(fn) { handlers.catch = fn; return this; },
   telegram: {
     async getMe() { return { username: 'Income_KoroBot' }; },
     async sendMessage(chatId, text, opts) { CALLS.group.push({ chatId, text, opts }); return {}; },
@@ -245,6 +266,14 @@ function reset() { CALLS.replies.length = 0; CALLS.edits.length = 0; CALLS.group
   reset();
   await textHandler()(mkCtx({ from: { id: 999, first_name: 'Nope' }, message: { text: 'hello bot' } }));
   check('no reply', CALLS.replies.length === 0);
+
+  console.log('\n[13] platform safety: no Prefer / no manual Content-Type headers');
+  check('no Prefer header anywhere', !CALLS.axios.some((c) => JSON.stringify(c[2] || {}).includes('Prefer') && c[2] && c[2].headers && c[2].headers.Prefer));
+  check('no Prefer in any axios config', !CALLS.axios.some((c) => JSON.stringify(c).includes("'Prefer'") || JSON.stringify(c).includes('"Prefer"')));
+  check('no manual Content-Type', !CALLS.axios.some((c) => c[2] && c[2].headers && c[2].headers['Content-Type']));
+  check('no Markup used', !require('fs').readFileSync(require('path').join(__dirname, 'nxbot.js'), 'utf8').includes('Markup.'));
+  const badUrls = CALLS.axios.filter((c) => (c[1].split('?').length - 1) > 1);
+  check('all axios URLs have single ?', badUrls.length === 0, JSON.stringify(badUrls).slice(0, 140));
 
   console.log(failures === 0 ? '\n🎉 ALL TESTS PASSED' : '\n💥 FAILURES: ' + failures);
   process.exit(failures === 0 ? 0 : 1);
