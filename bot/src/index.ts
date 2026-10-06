@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   const server = http.createServer((req, res) => {
     const url = (req.url ?? '').split('?')[0];
 
-    if (req.method === 'GET' && url === '/health') {
+    if (req.method === 'GET' && (url === '/health' || url === '/')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
       return;
